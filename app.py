@@ -12,7 +12,7 @@ st.set_page_config(
 # --- Página Principal ---
 
 # Título principal de la aplicación
-st.title("Bienvenido al Pipeline de Clustering 🚀")
+st.title("Pipeline de Clustering para SEO y SEM V.1")
 st.write("---")
 
 # Mensaje en la barra lateral para guiar al usuario
@@ -40,3 +40,4 @@ st.info(
     "👈 **Para empezar, selecciona '1_consolidacion_limpieza' en la barra lateral.**",
     icon="💡"
 )
+
