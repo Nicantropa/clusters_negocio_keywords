@@ -6,9 +6,8 @@ import openpyxl
 import re
 import numpy as np
 
-# --- 1. CLASES DE TRANSFORMACIÓN (Se mantienen intactas) ---
-# Todas tus clases (UtilidadesColumnas, PreAgregacion, TransformacionCategorica, etc.)
-# van aquí sin ningún cambio. Son las "herramientas" que usará nuestro pipeline.
+# --- 1. CLASES DE TRANSFORMACIÓN  ---
+
 
 class UtilidadesColumnas:
     @staticmethod
