@@ -147,6 +147,7 @@ def aplicar_score(df: pd.DataFrame, df_scaled: pd.DataFrame, pesos: dict[str, fl
 
 def main():
     st.title("Ingeniería de Características")
+    st.markdown("<small style='color:#6c757d;'>Clustering para SEO y SEM v.1 - agosto, 2025<br>Verónica Angarita @nicantropa</small>", unsafe_allow_html=True)
     up = st.file_uploader("Sube tu CSV limpio", type=["csv"])
     if not up:
         return
