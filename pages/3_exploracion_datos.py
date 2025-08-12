@@ -291,7 +291,7 @@ def mostrar_frecuencias_categoricas_streamlit(df: pd.DataFrame):
 
 # --- App principal ---
 def main():
-    st.title("Análisis Exploratorio de Datos - Streamlit")
+    st.title("Análisis Exploratorio de Datos")
     uploaded_file = st.file_uploader("Sube el dataset limpio (CSV)", type=["csv"])
     df = cargar_dataset_streamlit(uploaded_file)
     if df is None:
