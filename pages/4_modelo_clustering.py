@@ -121,6 +121,7 @@ def radar_clusters(df: pd.DataFrame, cols: list[str]) -> plt.Figure:
 # ------------------------- App -------------------------
 st.set_page_config(page_title="Clustering K-Means", layout="wide")
 st.title("Aplicación de Modelo de Clustering (K-Means)")
+st.markdown("<small style='color:#6c757d;'>Clustering para SEO y SEM V.1 - agosto, 2025<br>Verónica Angarita @nicantropa</small>", unsafe_allow_html=True)
 
 uploaded = st.file_uploader("Carga un CSV limpio", type=["csv"])
 if uploaded is None:
