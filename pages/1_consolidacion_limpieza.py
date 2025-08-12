@@ -204,6 +204,7 @@ def aplicar_pipeline(df_final: pd.DataFrame, *, threshold: float, sel_pct: list[
 
 
 st.title("Consolidación y Limpieza de Datos")
+st.markdown("<small style='color:#6c757d;'>Clustering para SEO y SEM v.1 - agosto, 2025<br>Verónica Angarita @nicantropa</small>", unsafe_allow_html=True)
 st.write("Sube tus archivos CSV, configura parámetros y ejecuta la limpieza.")
 
 # Estado de la página para evitar que los cambios de widgets oculten el pipeline
