@@ -1,26 +1,16 @@
 import streamlit as st
-import pandas as pd
 
-# Prueba final usando un nombre de archivo simple.
+st.title("Página de prueba de carga")
+st.write("Si ves este mensaje, la página se está cargando bien.")
 
-st.title("✅ Página de Limpieza")
+try:
+    import pandas as pd
+    import numpy as np
+    import csv
+    import os
+    import openpyxl
+    import re
+    st.success("Todas las librerías importadas correctamente.")
+except Exception as e:
+    st.error(f"Error al importar librerías: {e}")
 
-st.success("¡FUNCIONÓ! La página se ha cargado correctamente.")
-
-st.info(
-    """
-    Esto confirma que el problema estaba en el nombre del archivo (probablemente el prefijo "1_").
-    Ahora puedes empezar a añadir tu código original a este nuevo archivo.
-    """
-)
-
-# Dejamos un cargador de archivos simple para verificar la funcionalidad.
-uploaded_file = st.file_uploader("Puedes subir un CSV para probar", type="csv")
-
-if uploaded_file is not None:
-    try:
-        df = pd.read_csv(uploaded_file)
-        st.write("Vista previa:")
-        st.dataframe(df.head())
-    except Exception as e:
-        st.error(f"Error al leer el archivo: {e}")
