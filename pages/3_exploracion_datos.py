@@ -47,20 +47,25 @@ def offer_plotly_downloads(fig, base_name: str, key_prefix: str):
 
 
 # --- Configuración de tema/estilo para gráficos ---
-def configurar_tema_plotly():
-    """Configura la plantilla y transparencia para Plotly según el tema de Streamlit."""
+def init_plotly_theme_controls():
+    """Renderiza una única vez el expander de opciones y guarda preferencia en session_state."""
     base = st.get_option("theme.base") or "light"
-    default_transparent = base == "dark"
     if "plotly_transparent_bg" not in st.session_state:
-        st.session_state["plotly_transparent_bg"] = default_transparent
-
+        st.session_state["plotly_transparent_bg"] = (base == "dark")
     with st.expander("Opciones de visualización", expanded=False):
         st.session_state["plotly_transparent_bg"] = st.checkbox(
             "Usar fondo transparente en gráficos (Plotly)",
             value=st.session_state["plotly_transparent_bg"],
             help="Integra los gráficos con el tema (ideal en modo oscuro).",
+            key="opt_plotly_transparent_bg",
         )
 
+
+def get_plotly_theme():
+    """Devuelve (template, transparent) sin renderizar widgets (seguro de llamar muchas veces)."""
+    base = st.get_option("theme.base") or "light"
+    if "plotly_transparent_bg" not in st.session_state:
+        st.session_state["plotly_transparent_bg"] = (base == "dark")
     template = "plotly_dark" if base == "dark" else "plotly"
     transparent = bool(st.session_state["plotly_transparent_bg"])
     return template, transparent
@@ -147,7 +152,7 @@ def mostrar_correlacion_streamlit(df: pd.DataFrame, columnas_corr: list[str], me
     matriz_corr = df[columnas_corr].corr(method=metodo)
     st.write(f"Matriz de Correlación ({metodo.capitalize()}):")
     st.dataframe(matriz_corr)
-    template, transparent = configurar_tema_plotly()
+    template, transparent = get_plotly_theme()
     fig = px.imshow(
         matriz_corr,
         text_auto=".2f",
@@ -174,7 +179,7 @@ def visualizar_distribuciones_avanzado_streamlit(df: pd.DataFrame, columnas_sele
     st.info("Para cada variable: Box Plot y Histograma; se detecta asimetría y se sugiere escala logarítmica.")
     bins_default = st.slider("Número de bins para histogramas", 10, 150, 40)
     for col in columnas_seleccionadas:
-        template, transparent = configurar_tema_plotly()
+        template, transparent = get_plotly_theme()
         c1, c2 = st.columns(2)
         with c1:
             fig_box = px.box(df, y=col, points=False, title=f"Box Plot — {col}")
@@ -207,7 +212,7 @@ def graficar_histogramas_streamlit(df: pd.DataFrame, columnas_corr: list[str]):
     for col in columnas_corr:
         datos = df[col].dropna()
         if col.endswith("_num"):
-            template, transparent = configurar_tema_plotly()
+            template, transparent = get_plotly_theme()
             valores, conteos = np.unique(datos, return_counts=True)
             df_bar = pd.DataFrame({col: valores, "Frecuencia": conteos})
             fig = px.bar(df_bar, x=col, y="Frecuencia", title=f"Bar chart de {col}")
@@ -218,7 +223,7 @@ def graficar_histogramas_streamlit(df: pd.DataFrame, columnas_corr: list[str]):
             min_val = datos.min() if not datos.empty else 0
             max_val = datos.max() if not datos.empty else 0
             bins = 100 if col == "avg_monthly_searches" else 40
-            template, transparent = configurar_tema_plotly()
+            template, transparent = get_plotly_theme()
             fig = px.histogram(
                 df,
                 x=col,
@@ -246,7 +251,7 @@ def graficar_relaciones_bivariadas_streamlit(df: pd.DataFrame, columnas_numerica
     for etiqueta in sel:
         i = opciones.index(etiqueta)
         x, y = pares[i]
-        template, transparent = configurar_tema_plotly()
+        template, transparent = get_plotly_theme()
         fig = px.scatter(
             df,
             x=x,
@@ -279,7 +284,7 @@ def comparar_metricas_por_categoria_streamlit(df: pd.DataFrame):
         st.info("Selecciona al menos una métrica numérica.")
         return
     for num in metricas:
-        template, transparent = configurar_tema_plotly()
+        template, transparent = get_plotly_theme()
         fig = px.box(df, x=cat, y=num, points="outliers", title=f"Boxplot de {num} por {cat}")
         fig = style_plotly(fig, template, transparent)
         st.plotly_chart(fig, use_container_width=True)
@@ -310,7 +315,7 @@ def main():
     st.title("Análisis Exploratorio de Datos (EDA)")
     st.markdown("<small style='color:#6c757d;'>Clustering para SEO y SEM V.1 - agosto, 2025<br>Verónica Angarita @nicantropa</small>", unsafe_allow_html=True)
     # Configura tema/estilo Plotly antes de crear figuras (muestra expander de opciones)
-    configurar_tema_plotly()
+    init_plotly_theme_controls()
     uploaded = st.file_uploader("Carga un CSV para EDA", type=["csv"])
     if uploaded is None:
         st.info("Sube un archivo CSV para comenzar.")
@@ -351,7 +356,7 @@ def main():
                 st.warning("El pairplot puede ser lento con más de 5 variables.")
             if st.button("Generar pairplot"):
                 hue_parameter = 'cluster' if 'cluster' in df.columns else None
-                template, transparent = configurar_tema_plotly()
+                template, transparent = get_plotly_theme()
                 fig = px.scatter_matrix(df, dimensions=cols_sel, color=hue_parameter, title="Matriz de Gráficos de Dispersión")
                 fig.update_traces(diagonal_visible=False, showupperhalf=False, marker=dict(opacity=0.6))
                 fig = style_plotly(fig, template, transparent)
