@@ -292,6 +292,7 @@ def mostrar_frecuencias_categoricas_streamlit(df: pd.DataFrame):
 # --- App principal ---
 def main():
     st.title("Análisis Exploratorio de Datos")
+    st.markdown("<small style='color:#6c757d;'>Clustering para SEO y SEM v.1 - agosto, 2025<br>Verónica Angarita @nicantropa</small>", unsafe_allow_html=True)
     uploaded_file = st.file_uploader("Sube el dataset limpio (CSV)", type=["csv"])
     df = cargar_dataset_streamlit(uploaded_file)
     if df is None:
