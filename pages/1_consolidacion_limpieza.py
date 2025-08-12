@@ -6,22 +6,10 @@ import openpyxl
 import re
 import numpy as np
 
-st.title("Página de prueba de carga")
-st.write("Si ves este mensaje, la página se está cargando bien.")
 # --- 1. CLASES DE TRANSFORMACIÓN (Se mantienen intactas) ---
 # Todas tus clases (UtilidadesColumnas, PreAgregacion, TransformacionCategorica, etc.)
 # van aquí sin ningún cambio. Son las "herramientas" que usará nuestro pipeline.
 
-try:
-    import pandas as pd
-    import numpy as np
-    import csv
-    import os
-    import openpyxl
-    import re
-    st.success("Todas las librerías importadas correctamente.")
-except Exception as e:
-    st.error(f"Error al importar librerías: {e}")
 class UtilidadesColumnas:
     @staticmethod
     def encontrar_columna(df, nombre_objetivo):
@@ -195,16 +183,50 @@ def ejecutar_pipeline_de_limpieza_streamlit(uploaded_files, tasa=None, sufijo_mo
     return df_agregado
 
 
-if __name__ == "__main__":
-    st.title("Pipeline de Preparación y Limpieza de Datos")
-    st.write("Sube tus archivos CSV para iniciar el proceso de limpieza.")
-    uploaded_files = st.file_uploader("Selecciona los archivos CSV", type=["csv"], accept_multiple_files=True)
-    tasa = st.number_input("Ingresa la tasa de cambio (ej. 4000)", min_value=0.0, value=0.0)
-    sufijo_moneda = st.text_input("Ingresa el sufijo para la moneda (ej. usd)")
-    if st.button("Ejecutar limpieza"):
-        df_limpio = ejecutar_pipeline_de_limpieza_streamlit(uploaded_files, tasa if tasa > 0 else None, sufijo_moneda if sufijo_moneda else None)
+st.title("Pipeline de Preparación y Limpieza de Datos")
+st.write("Sube tus archivos CSV, configura parámetros y ejecuta la limpieza.")
+
+# Estado de la página para evitar que los cambios de widgets oculten el pipeline
+if "run_cleanup" not in st.session_state:
+    st.session_state.run_cleanup = False
+if "uploaded_files" not in st.session_state:
+    st.session_state.uploaded_files = None
+if "tasa" not in st.session_state:
+    st.session_state.tasa = 0.0
+if "sufijo_moneda" not in st.session_state:
+    st.session_state.sufijo_moneda = ""
+
+with st.form("form_limpieza"):
+    uploaded_files = st.file_uploader(
+        "Selecciona los archivos CSV",
+        type=["csv"],
+        accept_multiple_files=True,
+        key="uploader_csvs",
+        help="Puedes seleccionar múltiples archivos a la vez.",
+    )
+    tasa = st.number_input("Ingresa la tasa de cambio (ej. 4000)", min_value=0.0, value=st.session_state.tasa)
+    sufijo_moneda = st.text_input("Ingresa el sufijo para la moneda (ej. usd)", value=st.session_state.sufijo_moneda)
+    submitted = st.form_submit_button("Ejecutar limpieza")
+
+if submitted:
+    # Persistir selección y marcar ejecución
+    st.session_state.uploaded_files = uploaded_files
+    st.session_state.tasa = tasa
+    st.session_state.sufijo_moneda = sufijo_moneda
+    st.session_state.run_cleanup = True
+
+# Ejecutar pipeline cuando haya archivos y el usuario lo haya pedido (y mantenerlo visible en reruns)
+if st.session_state.run_cleanup:
+    if not st.session_state.uploaded_files:
+        st.warning("No se han subido archivos CSV.")
+    else:
+        df_limpio = ejecutar_pipeline_de_limpieza_streamlit(
+            st.session_state.uploaded_files,
+            st.session_state.tasa if st.session_state.tasa and st.session_state.tasa > 0 else None,
+            st.session_state.sufijo_moneda if st.session_state.sufijo_moneda else None,
+        )
         if df_limpio is not None:
             st.write("Vista previa del dataset limpio:")
             st.dataframe(df_limpio.head())
             csv = df_limpio.to_csv(index=False, encoding="utf-8-sig")
-            st.download_button("Descargar dataset limpio CSV", csv, "dataset_limpio.csv", "text/csv")
+            st.download_button("Descargar dataset limpio CSV", csv, "dataset_limpio.csv", "text/csv", key="dl_dataset_limpio")
