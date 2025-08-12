@@ -196,8 +196,6 @@ def main():
     csv_bytes = df.to_csv(index=False, encoding="utf-8-sig")
     st.download_button("Descargar dataset enriquecido", csv_bytes, "dataset_enriquecido.csv", "text/csv")
 
-    st.info("Módulo 100% Streamlit. Sin rutas de consola.")
-
 
 if __name__ == "__main__":
     main()
