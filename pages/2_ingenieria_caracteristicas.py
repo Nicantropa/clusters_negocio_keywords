@@ -146,7 +146,7 @@ def aplicar_score(df: pd.DataFrame, df_scaled: pd.DataFrame, pesos: dict[str, fl
 # ---------------------------
 
 def main():
-    st.title("Ingeniería de Características - Streamlit")
+    st.title("Ingeniería de Características")
     up = st.file_uploader("Sube tu CSV limpio", type=["csv"])
     if not up:
         return
