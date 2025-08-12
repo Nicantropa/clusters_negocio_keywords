@@ -96,70 +96,88 @@ class PostAgregacion:
         return rellenadas
 
 
-# --- 2. FUNCIÓN PRINCIPAL DEL PIPELINE ---
-def ejecutar_pipeline_de_limpieza_streamlit(uploaded_files, tasa=None, sufijo_moneda=None):
-    st.write("Librerías importadas correctamente.")
+# --- 2. CARGA Y PIPELINE (separados UI vs lógica) ---
+def cargar_concat_df(uploaded_files):
+    """Carga múltiples CSV del uploader, concatena y normaliza columnas."""
     if not uploaded_files:
-        st.warning("No se han subido archivos CSV.")
         return None
     files = {f"df_{os.path.splitext(f.name)[0].replace(' ', '_').lower()}": f for f in uploaded_files}
     dataframes = {}
     for key, file in files.items():
         try:
-            df = pd.read_csv(file, encoding="utf-16", sep="\t", engine="python", quotechar='"', quoting=csv.QUOTE_MINIMAL, header=2)
+            # Reiniciar el puntero del archivo por si ya fue leído en un rerun
+            try:
+                file.seek(0)
+            except Exception:
+                pass
+            df = pd.read_csv(
+                file,
+                encoding="utf-16",
+                sep="\t",
+                engine="python",
+                quotechar='"',
+                quoting=csv.QUOTE_MINIMAL,
+                header=2,
+            )
             unnamed_cols = [col for col in df.columns if "Unnamed" in col]
-            if unnamed_cols: df = df.drop(columns=unnamed_cols)
+            if unnamed_cols:
+                df = df.drop(columns=unnamed_cols)
             df["marca"] = key
             dataframes[key] = df
         except Exception as e:
-            st.error(f"Error al cargar {file.name}: {e}")
+            st.error(f"Error al cargar {getattr(file, 'name', 'archivo')}: {e}")
     if not dataframes:
-        st.error("No se pudieron cargar archivos. Abortando.")
         return None
     df_final = pd.concat(dataframes.values(), ignore_index=True)
     UtilidadesColumnas.normalizar_columnas(df_final)
+    return df_final
+
+
+def aplicar_pipeline(df_final: pd.DataFrame, *, threshold: float, sel_pct: list[str], sel_cat: list[str], aplicar_moneda: bool, tasa: float | None, sufijo_moneda: str | None):
+    """Aplica las transformaciones al DataFrame ya cargado según parámetros."""
+    if df_final is None or df_final.empty:
+        st.error("No hay datos para procesar.")
+        return None
+
     st.write(f"Registros: {df_final.shape[0]} | Columnas: {df_final.shape[1]}")
 
-    # Umbral interactivo para eliminar columnas con muchos nulos
+    # 1) Eliminar columnas con muchos nulos
     st.subheader("Limpieza: eliminación de columnas con muchos nulos")
-    threshold = st.slider("Umbral de nulos (elimina columnas por encima de este porcentaje)", 0.0, 1.0, 0.9, 0.05)
     pre_agg = PreAgregacion(df_final)
     eliminadas = pre_agg.eliminar_columnas_muy_nulas(threshold=threshold)
     if eliminadas:
         st.info(f"Columnas eliminadas (> {int(threshold*100)}% nulos): {eliminadas}")
-    # Conversión de porcentajes (selección interactiva)
-    st.subheader("Transformación: columnas de porcentaje")
-    posibles_pct = [col for col in ['three_month_change', 'yoy_change'] if col in df_final.columns]
-    sel_pct = st.multiselect("Selecciona columnas de porcentaje a convertir (0-100 a 0-1)", posibles_pct, default=posibles_pct)
+
+    # 2) Conversión de porcentajes
     if sel_pct:
+        st.subheader("Transformación: columnas de porcentaje")
         nuevos_nombres = [f"{c}_proportion" for c in sel_pct]
         porc = TransformacionPorcentaje(df_final)
         porc.transformar_porcentaje(sel_pct, nuevos_nombres)
         st.success(f"Columnas convertidas a proporción: {list(zip(sel_pct, nuevos_nombres))}")
-    # Limpieza y tipificación de categóricas
-    st.subheader("Transformación: columnas categóricas")
-    posibles_cat = [c for c in ['competition', 'marca'] if c in df_final.columns]
-    sel_cat = st.multiselect("Selecciona columnas categóricas a limpiar y tipar", posibles_cat, default=posibles_cat)
+
+    # 3) Categóricas
     if sel_cat:
+        st.subheader("Transformación: columnas categóricas")
         cat = TransformacionCategorica(df_final)
         cat.limpiar_texto(sel_cat)
         cat.convertir_a_categoria(sel_cat)
         st.success(f"Columnas categóricas procesadas: {sel_cat}")
-    # Conversión de moneda (opcional)
-    if tasa and sufijo_moneda:
+
+    # 4) Conversión de moneda (opcional)
+    if aplicar_moneda and tasa and sufijo_moneda:
         st.subheader("Transformación: conversión de moneda")
-        aplicar_moneda = st.checkbox("Aplicar conversión de moneda", value=True)
-        if aplicar_moneda:
-            try:
-                met = TransformacionMetrica(df_final)
-                if 'top_of_page_bid_low_range' in df_final.columns:
-                    met.convertir_moneda('top_of_page_bid_low_range', tasa, f'top_of_page_bid_low_{sufijo_moneda}')
-                if 'top_of_page_bid_high_range' in df_final.columns:
-                    met.convertir_moneda('top_of_page_bid_high_range', tasa, f'top_of_page_bid_high_{sufijo_moneda}')
-                st.success("Conversión de moneda aplicada.")
-            except Exception as e:
-                st.error(f"Error en la conversión de moneda: {e}")
-    # Agregación por keyword
+        try:
+            met = TransformacionMetrica(df_final)
+            if 'top_of_page_bid_low_range' in df_final.columns:
+                met.convertir_moneda('top_of_page_bid_low_range', tasa, f'top_of_page_bid_low_{sufijo_moneda}')
+            if 'top_of_page_bid_high_range' in df_final.columns:
+                met.convertir_moneda('top_of_page_bid_high_range', tasa, f'top_of_page_bid_high_{sufijo_moneda}')
+            st.success("Conversión de moneda aplicada.")
+        except Exception as e:
+            st.error(f"Error en la conversión de moneda: {e}")
+
+    # 5) Agregación por keyword
     if 'keyword' not in df_final.columns:
         st.error("No se encontró la columna 'keyword' para la agregación.")
         return None
@@ -170,6 +188,8 @@ def ejecutar_pipeline_de_limpieza_streamlit(uploaded_files, tasa=None, sufijo_mo
         agg_dict[col] = 'first'
     df_agregado = df_final.groupby('keyword').agg(agg_dict).reset_index()
     st.success(f"Dataset agregado. Número de keywords únicas: {len(df_agregado)}")
+
+    # 6) Imputación mediana
     post_agg = PostAgregacion(df_agregado)
     med_fills = post_agg.imputar_mediana_numericas()
     if med_fills:
@@ -179,6 +199,7 @@ def ejecutar_pipeline_de_limpieza_streamlit(uploaded_files, tasa=None, sufijo_mo
         st.success("¡Perfecto! Tu dataset está 100% limpio y sin valores nulos.")
     else:
         st.warning(f"Aún quedan {nulos_finales} nulos.")
+
     st.write("Proceso de limpieza completado.")
     return df_agregado
 
@@ -214,19 +235,58 @@ if submitted:
     st.session_state.tasa = tasa
     st.session_state.sufijo_moneda = sufijo_moneda
     st.session_state.run_cleanup = True
+    st.session_state.just_submitted = True
 
 # Ejecutar pipeline cuando haya archivos y el usuario lo haya pedido (y mantenerlo visible en reruns)
 if st.session_state.run_cleanup:
     if not st.session_state.uploaded_files:
         st.warning("No se han subido archivos CSV.")
     else:
-        df_limpio = ejecutar_pipeline_de_limpieza_streamlit(
-            st.session_state.uploaded_files,
-            st.session_state.tasa if st.session_state.tasa and st.session_state.tasa > 0 else None,
-            st.session_state.sufijo_moneda if st.session_state.sufijo_moneda else None,
-        )
-        if df_limpio is not None:
-            st.write("Vista previa del dataset limpio:")
-            st.dataframe(df_limpio.head())
-            csv = df_limpio.to_csv(index=False, encoding="utf-8-sig")
-            st.download_button("Descargar dataset limpio CSV", csv, "dataset_limpio.csv", "text/csv", key="dl_dataset_limpio")
+        # 1) Cargar y mostrar info general
+        df_base = cargar_concat_df(st.session_state.uploaded_files)
+        if df_base is None:
+            st.error("No se pudieron cargar los archivos.")
+        else:
+            st.info(f"Dataset cargado: {df_base.shape[0]} filas x {df_base.shape[1]} columnas")
+
+            # 2) Parámetros de limpieza (persisten entre ejecuciones)
+            st.subheader("Parámetros de limpieza")
+            default_threshold = st.session_state.get("param_threshold", 0.9)
+            threshold = st.slider("Umbral de nulos (elimina columnas por encima de este porcentaje)", 0.0, 1.0, float(default_threshold), 0.05, key="threshold_slider")
+            st.session_state.param_threshold = threshold
+
+            posibles_pct = [c for c in ['three_month_change', 'yoy_change'] if c in df_base.columns]
+            default_pct = st.session_state.get("param_sel_pct", posibles_pct)
+            sel_pct = st.multiselect("Columnas de porcentaje a convertir (0-100 a 0-1)", posibles_pct, default=default_pct, key="sel_pct_ms")
+            st.session_state.param_sel_pct = sel_pct
+
+            posibles_cat = [c for c in ['competition', 'marca'] if c in df_base.columns]
+            default_cat = st.session_state.get("param_sel_cat", posibles_cat)
+            sel_cat = st.multiselect("Columnas categóricas a limpiar y tipar", posibles_cat, default=default_cat, key="sel_cat_ms")
+            st.session_state.param_sel_cat = sel_cat
+
+            aplicar_moneda_default = st.session_state.get("param_aplicar_moneda", True)
+            aplicar_moneda = st.checkbox("Aplicar conversión de moneda", value=aplicar_moneda_default, key="chk_moneda") if (st.session_state.tasa and st.session_state.sufijo_moneda) else False
+            st.session_state.param_aplicar_moneda = aplicar_moneda
+
+            # 3) Ejecutar limpieza: auto-una-vez tras el submit, luego solo con botón
+            ejecutar_ahora = st.session_state.get("just_submitted", False)
+            btn_re_ejecutar = st.button("Ejecutar limpieza", key="btn_ejecutar_params")
+            do_process = ejecutar_ahora or btn_re_ejecutar
+            st.session_state.just_submitted = False  # consumir el auto-run
+
+            if do_process:
+                df_limpio = aplicar_pipeline(
+                    df_base.copy(),
+                    threshold=threshold,
+                    sel_pct=sel_pct,
+                    sel_cat=sel_cat,
+                    aplicar_moneda=aplicar_moneda,
+                    tasa=st.session_state.tasa if st.session_state.tasa and st.session_state.tasa > 0 else None,
+                    sufijo_moneda=st.session_state.sufijo_moneda if st.session_state.sufijo_moneda else None,
+                )
+                if df_limpio is not None:
+                    st.write("Vista previa del dataset limpio:")
+                    st.dataframe(df_limpio.head())
+                    csv = df_limpio.to_csv(index=False, encoding="utf-8-sig")
+                    st.download_button("Descargar dataset limpio CSV", csv, "dataset_limpio.csv", "text/csv", key="dl_dataset_limpio")
