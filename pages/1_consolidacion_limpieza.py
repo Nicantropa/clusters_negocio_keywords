@@ -203,7 +203,7 @@ def aplicar_pipeline(df_final: pd.DataFrame, *, threshold: float, sel_pct: list[
     return df_agregado
 
 
-st.title("Pipeline de Preparación y Limpieza de Datos")
+st.title("Consolidación y Limpieza de Datos")
 st.write("Sube tus archivos CSV, configura parámetros y ejecuta la limpieza.")
 
 # Estado de la página para evitar que los cambios de widgets oculten el pipeline
