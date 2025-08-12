@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import io
 
+# Estilo por defecto (se ajustará dinámicamente más abajo)
 sns.set_theme(style="whitegrid")
 
 # --- Utilidades de descarga ---
@@ -13,10 +14,82 @@ def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
 
 
 def fig_to_png_bytes(fig) -> bytes:
+    """Renderiza una figura a PNG respetando la preferencia de transparencia."""
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight")
+    transparent = bool(st.session_state.get("eda_transparent_bg", False))
+    # savefig.transparent controla alfa del canvas de salida
+    fig.savefig(buf, format="png", bbox_inches="tight", transparent=transparent)
     buf.seek(0)
     return buf.getvalue()
+
+
+# --- Configuración de tema/estilo para gráficos ---
+def configurar_tema_graficos():
+    """
+    Ajusta Seaborn/Matplotlib según la preferencia del usuario y el tema de Streamlit.
+    - Si el tema base es oscuro, por defecto activa fondo transparente.
+    - Fondo transparente: figure/axes transparentes y colores de texto claros en modo oscuro.
+    """
+    base = st.get_option("theme.base") or "light"
+    default_transparent = base == "dark"
+    # Guardamos preferencia en session_state para uso en descargas
+    if "eda_transparent_bg" not in st.session_state:
+        st.session_state["eda_transparent_bg"] = default_transparent
+
+    with st.expander("Opciones de visualización", expanded=False):
+        st.session_state["eda_transparent_bg"] = st.checkbox(
+            "Usar fondo transparente en gráficos (recomendado en tema oscuro)",
+            value=st.session_state["eda_transparent_bg"],
+            help="Hace que las figuras se integren con el tema de la app y eviten el rectángulo blanco.",
+        )
+
+    transparent = bool(st.session_state["eda_transparent_bg"])
+
+    if base == "dark":
+        # Estilo oscuro por defecto; colores de texto claros
+        sns.set_theme(style="darkgrid")
+        plt.rcParams.update(
+            {
+                "text.color": "#e6e6e6",
+                "axes.labelcolor": "#e6e6e6",
+                "xtick.color": "#d0d0d0",
+                "ytick.color": "#d0d0d0",
+                "axes.edgecolor": "#aaaaaa",
+                "grid.color": "#444444",
+            }
+        )
+    else:
+        sns.set_theme(style="whitegrid")
+        # Restablece colores por si se venía de un modo oscuro
+        plt.rcParams.update(
+            {
+                "text.color": "#000000",
+                "axes.labelcolor": "#000000",
+                "xtick.color": "#000000",
+                "ytick.color": "#000000",
+                "axes.edgecolor": "#333333",
+                "grid.color": "#dddddd",
+            }
+        )
+
+    if transparent:
+        # Hace que el canvas y los ejes sean transparentes por defecto
+        plt.rcParams["figure.facecolor"] = (0, 0, 0, 0)
+        plt.rcParams["axes.facecolor"] = "none"
+        plt.rcParams["savefig.facecolor"] = (0, 0, 0, 0)
+        plt.rcParams["savefig.transparent"] = True
+    else:
+        # Usa colores acordes al tema base
+        if base == "dark":
+            plt.rcParams["figure.facecolor"] = "#0e1117"  # similar a fondo de Streamlit dark
+            plt.rcParams["axes.facecolor"] = "#0e1117"
+            plt.rcParams["savefig.facecolor"] = "#0e1117"
+            plt.rcParams["savefig.transparent"] = False
+        else:
+            plt.rcParams["figure.facecolor"] = "#ffffff"
+            plt.rcParams["axes.facecolor"] = "#ffffff"
+            plt.rcParams["savefig.facecolor"] = "#ffffff"
+            plt.rcParams["savefig.transparent"] = False
 
 
 # --- Carga de datos ---
@@ -90,7 +163,9 @@ def mostrar_correlacion_streamlit(df: pd.DataFrame, columnas_corr: list[str], me
     st.write(f"Matriz de Correlación ({metodo.capitalize()}):")
     st.dataframe(matriz_corr)
     fig, ax = plt.subplots(figsize=(10, 8))
-    sns.heatmap(matriz_corr, annot=True, cmap='coolwarm', fmt=".2f", ax=ax)
+    # En modo oscuro, anotar con texto claro para mejor contraste
+    annot_kws = {"color": "#e6e6e6"} if st.get_option("theme.base") == "dark" else None
+    sns.heatmap(matriz_corr, annot=True, annot_kws=annot_kws, cmap='coolwarm', fmt=".2f", ax=ax)
     ax.set_title(f'Correlación de {metodo.capitalize()} entre Variables')
     st.pyplot(fig)
     st.download_button(
@@ -291,12 +366,16 @@ def mostrar_frecuencias_categoricas_streamlit(df: pd.DataFrame):
 
 # --- App principal ---
 def main():
-    st.title("Análisis Exploratorio de Datos")
-    st.markdown("<small style='color:#6c757d;'>Clustering para SEO y SEM v.1 - agosto, 2025<br>Verónica Angarita @nicantropa</small>", unsafe_allow_html=True)
-    uploaded_file = st.file_uploader("Sube el dataset limpio (CSV)", type=["csv"])
-    df = cargar_dataset_streamlit(uploaded_file)
-    if df is None:
+    st.title("Análisis Exploratorio de Datos (EDA)")
+    st.markdown("<small style='color:#6c757d;'>Clustering para SEO y SEM V.1 - agosto, 2025<br>Verónica Angarita @nicantropa</small>", unsafe_allow_html=True)
+    # Configura tema/estilo antes de crear figuras
+    configurar_tema_graficos()
+    uploaded = st.file_uploader("Carga un CSV para EDA", type=["csv"])
+    if uploaded is None:
+        st.info("Sube un archivo CSV para comenzar.")
         return
+    df = pd.read_csv(uploaded)
+    st.success(f"Dataset cargado: {uploaded.name} — {df.shape[0]} filas x {df.shape[1]} columnas")
 
     tabs = st.tabs(
         [
