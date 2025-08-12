@@ -1,95 +1,80 @@
 import streamlit as st
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.io as pio
 import numpy as np
 import io
-
-# Estilo por defecto (se ajustará dinámicamente más abajo)
-sns.set_theme(style="whitegrid")
 
 # --- Utilidades de descarga ---
 def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
 
 
-def fig_to_png_bytes(fig) -> bytes:
-    """Renderiza una figura a PNG respetando la preferencia de transparencia."""
-    buf = io.BytesIO()
-    transparent = bool(st.session_state.get("eda_transparent_bg", False))
-    # savefig.transparent controla alfa del canvas de salida
-    fig.savefig(buf, format="png", bbox_inches="tight", transparent=transparent)
-    buf.seek(0)
-    return buf.getvalue()
+def plotly_fig_to_png_bytes(fig) -> bytes | None:
+    """Convierte una figura Plotly a PNG. Requiere `kaleido`.
+    Devuelve None si kaleido no está disponible.
+    """
+    try:
+        img_bytes = pio.to_image(fig, format="png", scale=2)
+        return img_bytes
+    except Exception:
+        return None
+
+
+def plotly_fig_to_html_bytes(fig) -> bytes:
+    html = fig.to_html(full_html=False, include_plotlyjs='cdn')
+    return html.encode("utf-8")
+
+
+def offer_plotly_downloads(fig, base_name: str, key_prefix: str):
+    """Ofrece descarga en PNG (si kaleido disponible) y HTML interactivo."""
+    png = plotly_fig_to_png_bytes(fig)
+    if png is not None:
+        st.download_button(
+            "Descargar (PNG)",
+            data=png,
+            file_name=f"{base_name}.png",
+            mime="image/png",
+            key=f"{key_prefix}_png",
+        )
+    st.download_button(
+        "Descargar (HTML interactivo)",
+        data=plotly_fig_to_html_bytes(fig),
+        file_name=f"{base_name}.html",
+        mime="text/html",
+        key=f"{key_prefix}_html",
+    )
 
 
 # --- Configuración de tema/estilo para gráficos ---
-def configurar_tema_graficos():
-    """
-    Ajusta Seaborn/Matplotlib según la preferencia del usuario y el tema de Streamlit.
-    - Si el tema base es oscuro, por defecto activa fondo transparente.
-    - Fondo transparente: figure/axes transparentes y colores de texto claros en modo oscuro.
-    """
+def configurar_tema_plotly():
+    """Configura la plantilla y transparencia para Plotly según el tema de Streamlit."""
     base = st.get_option("theme.base") or "light"
     default_transparent = base == "dark"
-    # Guardamos preferencia en session_state para uso en descargas
-    if "eda_transparent_bg" not in st.session_state:
-        st.session_state["eda_transparent_bg"] = default_transparent
+    if "plotly_transparent_bg" not in st.session_state:
+        st.session_state["plotly_transparent_bg"] = default_transparent
 
     with st.expander("Opciones de visualización", expanded=False):
-        st.session_state["eda_transparent_bg"] = st.checkbox(
-            "Usar fondo transparente en gráficos (recomendado en tema oscuro)",
-            value=st.session_state["eda_transparent_bg"],
-            help="Hace que las figuras se integren con el tema de la app y eviten el rectángulo blanco.",
+        st.session_state["plotly_transparent_bg"] = st.checkbox(
+            "Usar fondo transparente en gráficos (Plotly)",
+            value=st.session_state["plotly_transparent_bg"],
+            help="Integra los gráficos con el tema (ideal en modo oscuro).",
         )
 
-    transparent = bool(st.session_state["eda_transparent_bg"])
+    template = "plotly_dark" if base == "dark" else "plotly"
+    transparent = bool(st.session_state["plotly_transparent_bg"])
+    return template, transparent
 
-    if base == "dark":
-        # Estilo oscuro por defecto; colores de texto claros
-        sns.set_theme(style="darkgrid")
-        plt.rcParams.update(
-            {
-                "text.color": "#e6e6e6",
-                "axes.labelcolor": "#e6e6e6",
-                "xtick.color": "#d0d0d0",
-                "ytick.color": "#d0d0d0",
-                "axes.edgecolor": "#aaaaaa",
-                "grid.color": "#444444",
-            }
-        )
-    else:
-        sns.set_theme(style="whitegrid")
-        # Restablece colores por si se venía de un modo oscuro
-        plt.rcParams.update(
-            {
-                "text.color": "#000000",
-                "axes.labelcolor": "#000000",
-                "xtick.color": "#000000",
-                "ytick.color": "#000000",
-                "axes.edgecolor": "#333333",
-                "grid.color": "#dddddd",
-            }
-        )
 
+def style_plotly(fig, template: str, transparent: bool):
+    fig.update_layout(template=template)
     if transparent:
-        # Hace que el canvas y los ejes sean transparentes por defecto
-        plt.rcParams["figure.facecolor"] = (0, 0, 0, 0)
-        plt.rcParams["axes.facecolor"] = "none"
-        plt.rcParams["savefig.facecolor"] = (0, 0, 0, 0)
-        plt.rcParams["savefig.transparent"] = True
-    else:
-        # Usa colores acordes al tema base
-        if base == "dark":
-            plt.rcParams["figure.facecolor"] = "#0e1117"  # similar a fondo de Streamlit dark
-            plt.rcParams["axes.facecolor"] = "#0e1117"
-            plt.rcParams["savefig.facecolor"] = "#0e1117"
-            plt.rcParams["savefig.transparent"] = False
-        else:
-            plt.rcParams["figure.facecolor"] = "#ffffff"
-            plt.rcParams["axes.facecolor"] = "#ffffff"
-            plt.rcParams["savefig.facecolor"] = "#ffffff"
-            plt.rcParams["savefig.transparent"] = False
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            legend_bgcolor="rgba(0,0,0,0)",
+        )
+    return fig
 
 
 # --- Carga de datos ---
@@ -162,12 +147,18 @@ def mostrar_correlacion_streamlit(df: pd.DataFrame, columnas_corr: list[str], me
     matriz_corr = df[columnas_corr].corr(method=metodo)
     st.write(f"Matriz de Correlación ({metodo.capitalize()}):")
     st.dataframe(matriz_corr)
-    fig, ax = plt.subplots(figsize=(10, 8))
-    # En modo oscuro, anotar con texto claro para mejor contraste
-    annot_kws = {"color": "#e6e6e6"} if st.get_option("theme.base") == "dark" else None
-    sns.heatmap(matriz_corr, annot=True, annot_kws=annot_kws, cmap='coolwarm', fmt=".2f", ax=ax)
-    ax.set_title(f'Correlación de {metodo.capitalize()} entre Variables')
-    st.pyplot(fig)
+    template, transparent = configurar_tema_plotly()
+    fig = px.imshow(
+        matriz_corr,
+        text_auto=".2f",
+        zmin=-1,
+        zmax=1,
+        title=f"Correlación de {metodo.capitalize()} entre Variables",
+        aspect="auto",
+        color_continuous_scale="RdBu",
+    )
+    fig = style_plotly(fig, template, transparent)
+    st.plotly_chart(fig, use_container_width=True)
     st.download_button(
         "Descargar matriz (CSV)",
         data=df_to_csv_bytes(matriz_corr.reset_index()),
@@ -175,13 +166,7 @@ def mostrar_correlacion_streamlit(df: pd.DataFrame, columnas_corr: list[str], me
         mime="text/csv",
         key=f"dl_corr_csv_{metodo}",
     )
-    st.download_button(
-        "Descargar heatmap (PNG)",
-        data=fig_to_png_bytes(fig),
-        file_name=f"heatmap_{metodo}.png",
-        mime="image/png",
-        key=f"dl_corr_png_{metodo}",
-    )
+    offer_plotly_downloads(fig, f"heatmap_{metodo}", f"dl_corr_plot_{metodo}")
 
 
 # --- Distribuciones ---
@@ -189,44 +174,32 @@ def visualizar_distribuciones_avanzado_streamlit(df: pd.DataFrame, columnas_sele
     st.info("Para cada variable: Box Plot y Histograma; se detecta asimetría y se sugiere escala logarítmica.")
     bins_default = st.slider("Número de bins para histogramas", 10, 150, 40)
     for col in columnas_seleccionadas:
-        fig, axes = plt.subplots(1, 2, figsize=(18, 6))
-        fig.suptitle(f'Análisis de Distribución para: {col}', fontsize=16)
-        # Box Plot
-        sns.boxplot(x=df[col], ax=axes[0])
-        axes[0].set_title('Box Plot (Resumen y Outliers)')
-        # Histograma
-        sns.histplot(data=df, x=col, ax=axes[1], kde=True, bins=bins_default)
-        axes[1].set_title('Histograma (Forma de la Distribución)')
-        # Asimetría
-        datos = df[col].dropna()
-        if not datos.empty and datos.min() >= 0 and datos.quantile(0.95) < (datos.max() / 5 if datos.max() else np.inf):
-            axes[0].set_xscale('log')
-            axes[1].set_xscale('log')
-            st.caption(f"Escala logarítmica aplicada a '{col}' por alta asimetría.")
-        st.pyplot(fig)
-        st.download_button(
-            f"Descargar distribución '{col}' (PNG)",
-            data=fig_to_png_bytes(fig),
-            file_name=f"distribucion_{col}.png",
-            mime="image/png",
-            key=f"dl_dist_{col}",
-        )
+        template, transparent = configurar_tema_plotly()
+        c1, c2 = st.columns(2)
+        with c1:
+            fig_box = px.box(df, y=col, points=False, title=f"Box Plot — {col}")
+            fig_box = style_plotly(fig_box, template, transparent)
+            st.plotly_chart(fig_box, use_container_width=True)
+            offer_plotly_downloads(fig_box, f"boxplot_{col}", f"dl_box_adv_{col}")
+        with c2:
+            datos = df[col].dropna()
+            skew_log = (not datos.empty and datos.min() >= 0 and datos.quantile(0.95) < (datos.max() / 5 if datos.max() else np.inf))
+            fig_hist = px.histogram(df, x=col, nbins=bins_default, marginal="rug", title=f"Histograma — {col}")
+            if skew_log:
+                fig_hist.update_xaxes(type="log")
+                st.caption(f"Escala log aplicada a '{col}' por alta asimetría.")
+            fig_hist = style_plotly(fig_hist, template, transparent)
+            st.plotly_chart(fig_hist, use_container_width=True)
+            offer_plotly_downloads(fig_hist, f"hist_{col}", f"dl_hist_adv_{col}")
         # Gráfico extra sin ceros si > 30% de ceros
         porcentaje_ceros = (df[col] == 0).mean() if col in df.columns else 0
         if porcentaje_ceros > 0.30:
             st.caption(f"La columna '{col}' tiene {porcentaje_ceros:.1%} de ceros. Gráfico adicional sin ellos.")
             df_filtrado = df[df[col] != 0]
-            fig2, ax2 = plt.subplots(figsize=(12, 7))
-            sns.histplot(data=df_filtrado, x=col, kde=True, bins=min(50, max(10, bins_default)))
-            ax2.set_title(f'Distribución de "{col}" (Excluyendo Ceros)')
-            st.pyplot(fig2)
-            st.download_button(
-                f"Descargar distribución sin ceros '{col}' (PNG)",
-                data=fig_to_png_bytes(fig2),
-                file_name=f"distribucion_sin_ceros_{col}.png",
-                mime="image/png",
-                key=f"dl_dist0_{col}",
-            )
+            fig2 = px.histogram(df_filtrado, x=col, nbins=min(50, max(10, bins_default)), title=f"Distribución de {col} (sin ceros)")
+            fig2 = style_plotly(fig2, template, transparent)
+            st.plotly_chart(fig2, use_container_width=True)
+            offer_plotly_downloads(fig2, f"distribucion_sin_ceros_{col}", f"dl_dist0_{col}")
 
 
 def graficar_histogramas_streamlit(df: pd.DataFrame, columnas_corr: list[str]):
@@ -234,46 +207,30 @@ def graficar_histogramas_streamlit(df: pd.DataFrame, columnas_corr: list[str]):
     for col in columnas_corr:
         datos = df[col].dropna()
         if col.endswith("_num"):
-            fig, ax = plt.subplots(figsize=(8, 5))
+            template, transparent = configurar_tema_plotly()
             valores, conteos = np.unique(datos, return_counts=True)
-            ax.bar(valores, conteos, color="skyblue")
-            ax.set_title(f'Bar chart de {col}')
-            ax.set_xlabel(col)
-            ax.set_ylabel("Frecuencia")
-            st.pyplot(fig)
-            st.download_button(
-                f"Descargar bar chart '{col}' (PNG)",
-                data=fig_to_png_bytes(fig),
-                file_name=f"barchart_{col}.png",
-                mime="image/png",
-                key=f"dl_bar_{col}",
-            )
+            df_bar = pd.DataFrame({col: valores, "Frecuencia": conteos})
+            fig = px.bar(df_bar, x=col, y="Frecuencia", title=f"Bar chart de {col}")
+            fig = style_plotly(fig, template, transparent)
+            st.plotly_chart(fig, use_container_width=True)
+            offer_plotly_downloads(fig, f"barchart_{col}", f"dl_bar_{col}")
         else:
             min_val = datos.min() if not datos.empty else 0
             max_val = datos.max() if not datos.empty else 0
             bins = 100 if col == "avg_monthly_searches" else 40
-            fig, ax = plt.subplots(figsize=(8, 5))
-            sns.histplot(
-                data=df,
+            template, transparent = configurar_tema_plotly()
+            fig = px.histogram(
+                df,
                 x=col,
-                bins=bins,
-                binrange=(min_val, max_val) if min_val != max_val else None,
-                ax=ax,
-                kde=True,
-                hue=hue_parameter,
-                palette='viridis',
+                nbins=bins,
+                color=hue_parameter,
+                title=f"Distribución de {col} ({int(min_val)} a {int(max_val)})",
             )
-            ax.set_title(f'Distribución de {col} ({int(min_val)} a {int(max_val)})')
             if not datos.empty and datos.quantile(0.95) < datos.max() / 5 and datos.min() >= 0:
-                ax.set_xscale('log')
-            st.pyplot(fig)
-            st.download_button(
-                f"Descargar histograma '{col}' (PNG)",
-                data=fig_to_png_bytes(fig),
-                file_name=f"hist_{col}.png",
-                mime="image/png",
-                key=f"dl_hist_{col}",
-            )
+                fig.update_xaxes(type="log")
+            fig = style_plotly(fig, template, transparent)
+            st.plotly_chart(fig, use_container_width=True)
+            offer_plotly_downloads(fig, f"hist_{col}", f"dl_hist_{col}")
 
 
 # --- Relaciones bivariadas ---
@@ -289,32 +246,24 @@ def graficar_relaciones_bivariadas_streamlit(df: pd.DataFrame, columnas_numerica
     for etiqueta in sel:
         i = opciones.index(etiqueta)
         x, y = pares[i]
-        fig, ax = plt.subplots(figsize=(7, 5))
-        sns.scatterplot(
-            x=df[x],
-            y=df[y],
-            hue=df[hue_parameter] if hue_parameter else None,
-            palette='viridis',
-            alpha=0.7,
-            ax=ax,
+        template, transparent = configurar_tema_plotly()
+        fig = px.scatter(
+            df,
+            x=x,
+            y=y,
+            color=hue_parameter,
+            opacity=0.7,
+            title=f"Relación bivariada: {x} vs {y}",
         )
         datos_x = df[x].dropna()
         datos_y = df[y].dropna()
         if not datos_x.empty and datos_x.quantile(0.95) < datos_x.max() / 5 and datos_x.min() >= 0:
-            ax.set_xscale('log')
+            fig.update_xaxes(type="log")
         if not datos_y.empty and datos_y.quantile(0.95) < datos_y.max() / 5 and datos_y.min() >= 0:
-            ax.set_yscale('log')
-        ax.set_title(f'Relación bivariada: {x} vs {y}')
-        ax.set_xlabel(x)
-        ax.set_ylabel(y)
-        st.pyplot(fig)
-        st.download_button(
-            f"Descargar scatter {x}_vs_{y} (PNG)",
-            data=fig_to_png_bytes(fig),
-            file_name=f"scatter_{x}_vs_{y}.png",
-            mime="image/png",
-            key=f"dl_scatter_{x}_{y}",
-        )
+            fig.update_yaxes(type="log")
+        fig = style_plotly(fig, template, transparent)
+        st.plotly_chart(fig, use_container_width=True)
+        offer_plotly_downloads(fig, f"scatter_{x}_vs_{y}", f"dl_scatter_{x}_{y}")
 
 
 # --- Comparar métricas por categoría ---
@@ -330,19 +279,11 @@ def comparar_metricas_por_categoria_streamlit(df: pd.DataFrame):
         st.info("Selecciona al menos una métrica numérica.")
         return
     for num in metricas:
-        fig, ax = plt.subplots(figsize=(8, 6))
-        sns.boxplot(x=df[cat], y=df[num], ax=ax)
-        ax.set_title(f'Boxplot de {num} por {cat}')
-        ax.set_xlabel(cat)
-        ax.set_ylabel(num)
-        st.pyplot(fig)
-        st.download_button(
-            f"Descargar boxplot {num}_por_{cat} (PNG)",
-            data=fig_to_png_bytes(fig),
-            file_name=f"boxplot_{num}_por_{cat}.png",
-            mime="image/png",
-            key=f"dl_box_{num}_{cat}",
-        )
+        template, transparent = configurar_tema_plotly()
+        fig = px.box(df, x=cat, y=num, points="outliers", title=f"Boxplot de {num} por {cat}")
+        fig = style_plotly(fig, template, transparent)
+        st.plotly_chart(fig, use_container_width=True)
+        offer_plotly_downloads(fig, f"boxplot_{num}_por_{cat}", f"dl_box_{num}_{cat}")
 
 
 # --- Frecuencias de categóricas ---
@@ -368,8 +309,8 @@ def mostrar_frecuencias_categoricas_streamlit(df: pd.DataFrame):
 def main():
     st.title("Análisis Exploratorio de Datos (EDA)")
     st.markdown("<small style='color:#6c757d;'>Clustering para SEO y SEM V.1 - agosto, 2025<br>Verónica Angarita @nicantropa</small>", unsafe_allow_html=True)
-    # Configura tema/estilo antes de crear figuras
-    configurar_tema_graficos()
+    # Configura tema/estilo Plotly antes de crear figuras (muestra expander de opciones)
+    configurar_tema_plotly()
     uploaded = st.file_uploader("Carga un CSV para EDA", type=["csv"])
     if uploaded is None:
         st.info("Sube un archivo CSV para comenzar.")
@@ -410,16 +351,12 @@ def main():
                 st.warning("El pairplot puede ser lento con más de 5 variables.")
             if st.button("Generar pairplot"):
                 hue_parameter = 'cluster' if 'cluster' in df.columns else None
-                g = sns.pairplot(data=df, vars=cols_sel, hue=hue_parameter, palette='viridis', plot_kws={'alpha': 0.6})
-                g.fig.suptitle("Matriz de Gráficos de Dispersión", y=1.02)
-                st.pyplot(g.fig)
-                st.download_button(
-                    "Descargar pairplot (PNG)",
-                    data=fig_to_png_bytes(g.fig),
-                    file_name="pairplot.png",
-                    mime="image/png",
-                    key="dl_pairplot",
-                )
+                template, transparent = configurar_tema_plotly()
+                fig = px.scatter_matrix(df, dimensions=cols_sel, color=hue_parameter, title="Matriz de Gráficos de Dispersión")
+                fig.update_traces(diagonal_visible=False, showupperhalf=False, marker=dict(opacity=0.6))
+                fig = style_plotly(fig, template, transparent)
+                st.plotly_chart(fig, use_container_width=True)
+                offer_plotly_downloads(fig, "pairplot", "dl_pairplot")
 
     with tabs[4]:
         cols_sel = seleccionar_columnas_numericas_streamlit(df, "Selecciona columnas numéricas para pares bivariados")
