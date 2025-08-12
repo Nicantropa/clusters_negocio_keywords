@@ -37,9 +37,10 @@ st.write("---")
 
 # Instrucción clara para el siguiente paso
 st.info(
-    "👈 **Para empezar, selecciona '1_consolidacion_limpieza' en la barra lateral.**",
+    "**Para empezar, selecciona 'Consolidacion y Limpieza' en la barra lateral.**",
     icon="💡"
 )
+
 
 
 
