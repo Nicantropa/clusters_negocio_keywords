@@ -12,7 +12,7 @@ st.set_page_config(
 # --- Página Principal ---
 
 # Título principal de la aplicación
-st.title("Pipeline de Clustering para SEO y SEM V.1")
+st.title("Clustering para SEO y SEM V.1")
 st.write("---")
 
 # Mensaje en la barra lateral para guiar al usuario
@@ -23,7 +23,7 @@ st.header("¿Qué hace esta herramienta?")
 st.markdown(
     """
     Esta aplicación te permite ejecutar un pipeline completo de Machine Learning para segmentar clientes o datos de negocio.
-    Cada paso del proceso está separado en una página diferente para mayor claridad.
+    Cada paso del proceso está separado en una página diferente para mayor claridad. Versión 1.0 adaptada para datasets de Google Kewçyword Planner. 
     
     **El flujo de trabajo es el siguiente:**
     1.  **Consolidación y Limpieza:** Carga y prepara tus datos iniciales.
@@ -40,4 +40,5 @@ st.info(
     "👈 **Para empezar, selecciona '1_consolidacion_limpieza' en la barra lateral.**",
     icon="💡"
 )
+
 
