@@ -1,6 +1,20 @@
-streamlit
-pandas
-numpy
-openpyxl
-scikit-learn
-seaborn
+# Core app framework
+streamlit>=1.33
+
+# Data stack
+pandas>=2.1
+numpy>=2.0
+scipy>=1.11
+
+# ML (clustering, scaling, PCA)
+scikit-learn>=1.4
+
+# Visualization
+seaborn>=0.13
+matplotlib>=3.8
+plotly>=5.18
+# PNG export for Plotly figures
+kaleido>=0.2.1
+
+# Optional: Excel IO (enable if you read/write .xlsx anywhere)
+openpyxl>=3.1
